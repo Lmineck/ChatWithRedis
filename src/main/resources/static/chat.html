@@ -1,15 +1,12 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8"/>
+    <meta charset="UTF-8" />
     <title>익명 실시간 채팅</title>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
+        * { box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', sans-serif;
             background: #f5f7fa;
@@ -20,7 +17,6 @@
             align-items: flex-start;
             min-height: 100vh;
         }
-
         .chat-container {
             width: 90%;
             max-width: 600px;
@@ -30,35 +26,32 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
-
         .chat-header {
             background-color: #4285f4;
             color: #fff;
             padding: 20px;
             font-size: 1.4rem;
             font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-
         .chat-box {
             height: 400px;
             overflow-y: auto;
             padding: 20px;
             background-color: #fafafa;
         }
-
         .chat-message {
             margin-bottom: 12px;
         }
-
         .chat-message strong {
             color: #333;
         }
-
         .chat-input-container {
             display: flex;
             border-top: 1px solid #ddd;
         }
-
         .chat-input-container input {
             flex: 1;
             padding: 15px;
@@ -66,7 +59,6 @@
             font-size: 1rem;
             outline: none;
         }
-
         .chat-input-container button {
             padding: 0 20px;
             background-color: #4285f4;
@@ -76,7 +68,6 @@
             font-weight: bold;
             font-size: 1rem;
         }
-
         .chat-input-container button:hover {
             background-color: #3367d6;
         }
@@ -84,20 +75,34 @@
 </head>
 <body>
 <div class="chat-container">
-    <div class="chat-header">익명 실시간 채팅</div>
+    <div class="chat-header">
+        <span>익명 실시간 채팅</span>
+        <span id="room-info" style="font-size: 0.9rem; opacity: 0.85;"></span>
+    </div>
     <div class="chat-box" id="chat"></div>
     <div class="chat-input-container">
-        <input type="text" id="message" placeholder="메시지를 입력하세요..."/>
+        <input type="text" id="message" placeholder="메시지를 입력하세요..." />
         <button onclick="sendMessage()">보내기</button>
     </div>
 </div>
 
 <script>
     let stompClient = null;
-    const roomId = 'room1';  // 테스트용 채팅방 ID
-    const sender = '익명' + Math.floor(Math.random() * 1000);
+    let sender = null;
+    const roomId = Math.floor(Math.random() * 10) + 1;
+
+    async function joinRoomAndConnect() {
+        const res = await fetch(`/api/room/${roomId}/join`);
+        sender = await res.text();  // 예: 익명1
+
+        document.getElementById("room-info").innerText = `${roomId} 번 방 - ${sender}`;
+
+        await updateRoomInfo();
+        connect();  // 이제 WebSocket 연결
+    }
 
     function connect() {
+
         const socket = new SockJS("/ws-chat");
         stompClient = Stomp.over(socket);
 
@@ -105,9 +110,7 @@
             stompClient.subscribe("/sub/chat/room/" + roomId, function (message) {
                 const msg = JSON.parse(message.body);
                 const chatBox = document.getElementById("chat");
-                chatBox.innerHTML += `
-            <div class="chat-message"><strong>${msg.sender}:</strong> ${msg.message}</div>
-          `;
+                chatBox.innerHTML += `<div class="chat-message"><strong>${msg.sender}:</strong> ${msg.message}</div>`;
                 chatBox.scrollTop = chatBox.scrollHeight;
             });
 
@@ -134,7 +137,26 @@
         }
     }
 
-    connect();
+    async function updateRoomInfo() {
+        const res = await fetch(`/api/room/${roomId}/users`);
+        const userCount = await res.text();
+        document.getElementById("room-info").innerText = `${roomId} 번 방 (${userCount}명)`;
+    }
+
+    // Enter 키로 메시지 전송 가능하도록 설정
+    document.getElementById("message").addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+            event.preventDefault(); // form 제출 방지
+            sendMessage();
+        }
+    });
+
+    window.addEventListener("beforeunload", () => {
+        navigator.sendBeacon(`/api/room/${roomId}/leave?sender=${sender}`);
+    });
+
+    joinRoomAndConnect();
+    setInterval(updateRoomInfo, 1000); // 3초마다 갱신
 </script>
 </body>
 </html>
