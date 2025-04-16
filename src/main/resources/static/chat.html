@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8"/>
     <title>익명 실시간 채팅</title>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Segoe UI', sans-serif;
             background: #f5f7fa;
@@ -17,6 +20,7 @@
             align-items: flex-start;
             min-height: 100vh;
         }
+
         .chat-container {
             width: 90%;
             max-width: 600px;
@@ -26,6 +30,7 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
+
         .chat-header {
             background-color: #4285f4;
             color: #fff;
@@ -36,22 +41,27 @@
             justify-content: space-between;
             align-items: center;
         }
+
         .chat-box {
             height: 400px;
             overflow-y: auto;
             padding: 20px;
             background-color: #fafafa;
         }
+
         .chat-message {
             margin-bottom: 12px;
         }
+
         .chat-message strong {
             color: #333;
         }
+
         .chat-input-container {
             display: flex;
             border-top: 1px solid #ddd;
         }
+
         .chat-input-container input {
             flex: 1;
             padding: 15px;
@@ -59,6 +69,7 @@
             font-size: 1rem;
             outline: none;
         }
+
         .chat-input-container button {
             padding: 0 20px;
             background-color: #4285f4;
@@ -68,20 +79,42 @@
             font-weight: bold;
             font-size: 1rem;
         }
+
         .chat-input-container button:hover {
             background-color: #3367d6;
         }
+
+        #nickname-btn {
+            background-color: #ffffff;
+            color: #4285f4;
+            border: 1px solid #4285f4;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        #nickname-btn:hover {
+            background-color: #e3f0ff;
+            color: #3367d6;
+        }
     </style>
 </head>
+
 <body>
 <div class="chat-container">
     <div class="chat-header">
         <span>익명 실시간 채팅</span>
-        <span id="room-info" style="font-size: 0.9rem; opacity: 0.85;"></span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span id="room-info" style="font-size: 0.9rem; opacity: 0.85;"></span>
+            <button id="nickname-btn" onclick="setNickname()">닉네임 변경</button>
+        </div>
     </div>
     <div class="chat-box" id="chat"></div>
     <div class="chat-input-container">
-        <input type="text" id="message" placeholder="메시지를 입력하세요..." />
+        <input type="text" id="message" placeholder="메시지를 입력하세요..."/>
         <button onclick="sendMessage()">보내기</button>
     </div>
 </div>
@@ -89,6 +122,7 @@
 <script>
     let stompClient = null;
     let sender = null;
+    let nickname = null; // 사용자가 설정한 닉네임
     const roomId = Math.floor(Math.random() * 10) + 1;
 
     async function joinRoomAndConnect() {
@@ -102,8 +136,9 @@
     }
 
     function connect() {
-
         const socket = new SockJS("/ws-chat");
+        const displayName = nickname || sender;
+
         stompClient = Stomp.over(socket);
 
         stompClient.connect({}, function () {
@@ -117,8 +152,8 @@
             stompClient.send("/pub/chat/message", {}, JSON.stringify({
                 type: 'ENTER',
                 roomId: roomId,
-                sender: sender,
-                message: `${sender}님이 입장하셨습니다.`
+                sender: displayName,
+                message: `${displayName}님이 입장하셨습니다.`
             }));
         });
     }
@@ -126,11 +161,13 @@
     function sendMessage() {
         const input = document.getElementById("message");
         const msg = input.value.trim();
+        const displayName = nickname || sender;
+
         if (msg && stompClient) {
             stompClient.send("/pub/chat/message", {}, JSON.stringify({
                 type: 'TALK',
                 roomId: roomId,
-                sender: sender,
+                sender: displayName,
                 message: msg
             }));
             input.value = "";
@@ -140,7 +177,32 @@
     async function updateRoomInfo() {
         const res = await fetch(`/api/room/${roomId}/users`);
         const userCount = await res.text();
-        document.getElementById("room-info").innerText = `${roomId} 번 방 (${userCount}명)`;
+
+        const displayName = nickname || sender; // sender는 익명N
+        document.getElementById("room-info").innerText = `${roomId}번 방 (${userCount}명) - ${displayName}`;
+    }
+
+    function setNickname() {
+        const name = prompt("닉네임을 입력하세요:");
+        if (name && name.trim().length > 0) {
+            const newNickname = name.trim();
+            const oldDisplay = nickname || sender;
+
+            if (newNickname !== nickname) {
+                nickname = newNickname;
+                updateRoomInfo();
+
+                // 닉네임 변경 메시지 전송
+                const systemMsg = `${oldDisplay}님이 닉네임을 '${nickname}'(으)로 변경하셨습니다.`;
+
+                stompClient.send("/pub/chat/message", {}, JSON.stringify({
+                    type: 'TALK',
+                    roomId: roomId,
+                    sender: nickname,
+                    message: systemMsg
+                }));
+            }
+        }
     }
 
     // Enter 키로 메시지 전송 가능하도록 설정
